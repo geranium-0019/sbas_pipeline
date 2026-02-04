@@ -683,7 +683,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    project_dir: Path = args.project_dir or config_path.parent
+    project_dir: Path = args.project_dir or Path(cfg.get("project_dir") or config_path.parent).expanduser().resolve()
 
     if not args.quiet:
         print(f"Loading config from: {config_path}")

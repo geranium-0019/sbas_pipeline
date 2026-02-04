@@ -1,5 +1,4 @@
-project_dir: work/jakarta_s1
-
+project_dir: /work/jakarta_s1
 # --- AOI & time ---
 # bbox: [W, S, E, N]
 aoi_bbox: [110.694, -8.26, 111.147, -7.729]

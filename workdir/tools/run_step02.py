@@ -1,14 +1,20 @@
 from pathlib import Path
+
 import yaml
 
 from s1_sbas_download import sbas_select_and_download
 
-CONFIG = Path("work/jakarta_s1/config.yaml")
-PROJECT_DIR = CONFIG.parent  # project_dir = work/jakarta_s1
 
-def main():
-    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
-    res = sbas_select_and_download(cfg, PROJECT_DIR)
+def main() -> None:
+    # Resolve config relative to this repo/workdir to avoid depending on CWD.
+    config_path = Path(__file__).parent.parent / "config.yaml"
+    cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    project_dir = Path(cfg.get("project_dir", "")).expanduser().resolve()
+    if not str(project_dir):
+        raise ValueError("config.yaml must set: project_dir")
+
+    res = sbas_select_and_download(cfg, project_dir)
     print(res)
 
 if __name__ == "__main__":

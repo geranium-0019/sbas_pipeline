@@ -3,3 +3,4 @@ workdir/tools/__pycache__
 workdir/.copernicus_dataspace_token
 docker-compose.override.yml
 workdir/jakarta_s1
+workdir/logs/

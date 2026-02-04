@@ -29,6 +29,27 @@ from steps.step_06_run_isce2 import step_06_run_isce2
 from steps.step_07_run_mintpy import step_07_run_mintpy
 
 
+def normalize_step_id(value: str) -> str:
+    """Normalize CLI step selector values to canonical step ids.
+
+    Accepts either a step id (e.g. "04_download_orbits") or a filename
+    (e.g. "step_04_download_orbits.py").
+    """
+    v = (value or "").strip()
+    if not v:
+        return v
+
+    # Allow passing a python filename
+    if v.endswith(".py"):
+        v = Path(v).name[:-3]
+
+    # Allow passing module filename prefix
+    if v.startswith("step_"):
+        v = v[len("step_") :]
+
+    return v
+
+
 def steps_def() -> List[Step]:
     """Define all pipeline steps in order."""
     return [
@@ -49,9 +70,12 @@ def select_steps(all_steps: List[Step], ctx: Context) -> List[Step]:
     # --only-steps has priority
     if ctx.only_steps:
         wanted = []
-        for sid in ctx.only_steps:
+        for raw in ctx.only_steps:
+            sid = normalize_step_id(raw)
             if sid not in ids:
-                raise ValueError(f"Unknown step id in --only-steps: {sid}. Valid: {ids}")
+                raise ValueError(
+                    f"Unknown step id in --only-steps: {raw} (normalized: {sid}). Valid: {ids}"
+                )
             wanted.append(all_steps[ids.index(sid)])
         return wanted
 
@@ -59,13 +83,17 @@ def select_steps(all_steps: List[Step], ctx: Context) -> List[Step]:
     start_idx = 0
     end_idx = len(all_steps) - 1
     if ctx.from_step:
-        if ctx.from_step not in ids:
-            raise ValueError(f"Unknown --from-step: {ctx.from_step}. Valid: {ids}")
-        start_idx = ids.index(ctx.from_step)
+        raw = ctx.from_step
+        sid = normalize_step_id(raw)
+        if sid not in ids:
+            raise ValueError(f"Unknown --from-step: {raw} (normalized: {sid}). Valid: {ids}")
+        start_idx = ids.index(sid)
     if ctx.until_step:
-        if ctx.until_step not in ids:
-            raise ValueError(f"Unknown --until-step: {ctx.until_step}. Valid: {ids}")
-        end_idx = ids.index(ctx.until_step)
+        raw = ctx.until_step
+        sid = normalize_step_id(raw)
+        if sid not in ids:
+            raise ValueError(f"Unknown --until-step: {raw} (normalized: {sid}). Valid: {ids}")
+        end_idx = ids.index(sid)
 
     if start_idx > end_idx:
         raise ValueError("--from-step is after --until-step")
@@ -116,10 +144,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--only-steps",
         nargs="+",
-        help="Run only specified step ids (e.g., 02_download_s1 03_download_dem)",
+        help=(
+            "Run only specified step ids (e.g., 02_download_s1 03_download_dem) "
+            "or step filenames (e.g., step_04_download_orbits.py)"
+        ),
     )
-    p.add_argument("--from-step", help="Start from this step id")
-    p.add_argument("--until-step", help="Stop after this step id")
+    p.add_argument(
+        "--from-step",
+        help="Start from this step id (e.g., 04_download_orbits) or filename (step_04_download_orbits.py)",
+    )
+    p.add_argument(
+        "--until-step",
+        help="Stop after this step id (e.g., 04_download_orbits) or filename (step_04_download_orbits.py)",
+    )
 
     return p.parse_args()
 

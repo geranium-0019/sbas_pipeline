@@ -16,16 +16,13 @@ def step_03_download_dem(cfg: Dict[str, Any], ctx: Context, logger: logging.Logg
     """
     logger.info("Step 03: Download DEM")
 
-    # s1_sbas_download.py の出力から sbas_pairs.json の場所を特定する
-    # 本来は step_02 の出力から受け取るべき
-    s1_download_cfg = cfg.get("s1_sbas_download", {})
-    s1_out_dir = Path(s1_download_cfg.get("out_dir", "imgs"))
-    if not s1_out_dir.is_absolute():
-        s1_out_dir = ctx.project_dir / s1_out_dir
-
-    sbas_pairs_path = s1_out_dir / ".state" / "sbas_pairs.json"
+    # Step 02 (tools/s1_sbas_download.py) writes sbas_pairs.json to: <project_dir>/.state/sbas_pairs.json
+    sbas_pairs_path = ctx.state_dir / "sbas_pairs.json"
     if not sbas_pairs_path.exists():
-        msg = f"sbas_pairs.json not found. Expected at: {sbas_pairs_path}. Please run step 02 first."
+        msg = (
+            "sbas_pairs.json not found. Expected at: "
+            f"{sbas_pairs_path}. Please run step 02 first."
+        )
         logger.error(msg)
         raise FileNotFoundError(msg)
 
