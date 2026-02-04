@@ -1,0 +1,5 @@
+workdir/tools/__pycache__
+.env
+workdir/.copernicus_dataspace_token
+docker-compose.override.yml
+workdir/jakarta_s1

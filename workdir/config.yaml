@@ -1,0 +1,56 @@
+project_dir: work/jakarta_s1
+
+# --- AOI & time ---
+# bbox: [W, S, E, N]
+aoi_bbox: [110.694, -8.26, 111.147, -7.729]
+date_start: "2020-01-01"
+date_end:   "2020-03-31"
+
+# ASC / DESC / BOTH
+orbit_direction: "DESC"
+
+# --- search + download settings ---
+s1_download:
+  out_dir: data/s1_slc     # project_dir からの相対（run_pipelineの ctx.s1_slc_dir と一致）
+  max_results: 5000
+  processes: 8
+
+  # optional filters
+  platform: ["SENTINEL-1A", "SENTINEL-1B"]
+  beam_mode: "IW"
+  processing_level: "SLC"
+
+  # Option B: shrink AOI inward (meters) to reduce candidates
+  # Start with 2000 (2 km) and increase if still too many.
+  aoi_shrink_m: 2000
+
+  # first run recommended:
+  # dry_search_only: true
+  dry_search_only: false
+  
+  # Show progress per-product (True) or bulk download (False)
+  show_progress: true
+  
+  # Skip if already exists
+  skip_existing: true
+
+# --- SBAS network settings ---
+sbas:
+  # pair density (network density)
+  k_neighbors: 2
+  max_temporal_days: 48
+  ensure_chain: true
+
+  # choose which track-group to process
+  choose_group: "largest"
+
+  # acquisition density (reduce number of scenes themselves)
+  thin_acquisitions:
+    # Keep acquisitions only if they are at least this many days apart.
+    # Example: Sentinel-1 6-day repeat -> set 12 to roughly keep every other acquisition.
+    min_repeat_days: 12
+
+    # Also cap total acquisitions after thinning (optional).
+    # max_acquisitions: 80
+
+    keep_ends: true

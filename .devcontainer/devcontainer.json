@@ -1,0 +1,17 @@
+{
+  "name": "time_series_insar",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/work",
+  "envFile": ".env",
+  "customizations": {
+    "vscode": {
+      "settings": {},
+      "extensions": []
+    }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/workdir,target=/work,type=bind,consistency=cached"
+  ],
+  "remoteUser": "gray"
+}

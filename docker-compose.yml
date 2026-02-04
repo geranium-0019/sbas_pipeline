@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mintpy-isce2:latest
+    working_dir: /work
+    tty: true
+    stdin_open: true
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Tokyo
+      - EARTHDATA_USER=${EARTHDATA_USER}
+      - EARTHDATA_PASS=${EARTHDATA_PASS}
+      - COPERNICUS_USER=${COPERNICUS_USER}
+      - COPERNICUS_PASSWORD=${COPERNICUS_PASSWORD}
+    # volumes: 各自の環境に合わせてパスを調整してください / Adjust paths to your local environment as needed
+    volumes:
+      - ${PROJECT_ROOT:-./workdir}:/work  # プロジェクト作業ディレクトリ / Project working directory
+      # Optional external mount (use docker-compose.override.yml or set PROJECT_MOUNT/PROJECT_NAME in .env)
+      # Example: /mnt/sd_sbas/masters/Jakarta:/work/project_name
+      - ./init.sh:/usr/local/bin/init.sh:ro  # 初期化スクリプト（必要に応じて）/ Init script (if needed)
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["bash", "-lc", "source /usr/local/bin/init.sh"]
