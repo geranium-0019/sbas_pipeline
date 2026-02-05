@@ -65,221 +65,245 @@ cd time_series_insar
 # .env ファイル
 EARTHDATA_USER=your_username
 EARTHDATA_PASS=your_password
-```
 
-> **注意**: [NASA Earthdata](https://urs.earthdata.nasa.gov/)でアカウント登録が必要です
+# SBAS Time Series InSAR Pipeline (ISCE2 + MintPy)
 
-#### 3. VS Code Dev Containerで起動
+![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+![ISCE2](https://img.shields.io/badge/ISCE2-Supported-green)
+![MintPy](https://img.shields.io/badge/MintPy-Supported-green)
+
+このリポジトリは、Sentinel-1 IW SLC を対象に **SBAS (Small Baseline Subset)** の時系列InSARを実行するための、Dockerベースのパイプラインです。
+
+パイプライン本体は `workdir/run_pipeline.py` で、設定 `config.yaml` を元に `steps/` を順に実行し、各Stepの完了状態を `<project_dir>/.state/` に保存します。
+
+## 特徴
+
+- Dockerだけで ISCE2 / MintPy / SNAPHU / GDAL 等を揃えられる
+- `config.yaml` 1つで検索→SBASネットワーク構築→ダウンロード→ISCE2→MintPy まで実行
+- Step単位で再実行・部分実行ができる（`.state` によるスキップ）
+
+## 必要環境
+
+- Docker
+- Docker Compose（`docker compose` が使えること）
+- ストレージ（解析範囲/期間によって数十GB〜）
+
+## クイックスタート
+
+### 1) 初期セットアップ（推奨）
 
 ```bash
-# VS Codeでフォルダを開く
-code .
-
-# Command Palette (Ctrl+Shift+P) で以下を実行:
-# > Dev Containers: Reopen in Container
+./setup.sh
 ```
 
-または、直接Dockerで起動：
+`setup.sh` は対話的に以下を行います。
+
+- `.env` の作成/更新（認証情報テンプレート、PROJECT_NAME など）
+- `workdir/config.yaml` の `project_dir` を `/work/<PROJECT_NAME>` に更新
+- 必要に応じて `docker-compose.override.yml` を生成（外部ディスクを `/work/<PROJECT_NAME>` にマウント）
+
+### 2) コンテナ起動
 
 ```bash
-docker compose up -d
-docker compose exec mintpy-isce2 bash
+docker compose up -d --build
 ```
 
-## 📖 使用方法
+### 3) コンテナに入る
 
-### Step 1: Sentinel-1データのダウンロード
-
-1. **ASFでデータ検索**: [ASF Data Search](https://search.asf.alaska.edu/)にアクセス
-2. **ジオメトリファイルをダウンロード**: 検索結果をgeojsonで保存
-3. **データダウンロード実行**:
-
-```python
-# notebooks/download_sentinel-1.ipynb を使用
-from tools.download_sentinel import download_s1_slc
-
-# ASFから取得したgeojsonファイルを指定
-asf_file = "tools/your_search_results.geojson"
-folder_out = "/work/data/sentinel_images"
-username = "your_earthdata_username" 
-password = "your_earthdata_password"
-
-download_s1_slc(asf_file, folder_out, username, password)
+```bash
+docker compose exec app bash
 ```
 
-### Step 2: 設定ファイルの準備
+### 4) パイプライン実行
 
-`config_example.yaml`をベースに設定ファイルを作成：
+コンテナ内で:
+
+```bash
+cd /work
+python run_pipeline.py --config config.yaml
+```
+
+成果物は `config.yaml` の `project_dir`（例: `/work/<PROJECT_NAME>`）配下に作成されます。
+
+## ディレクトリとマウントの考え方
+
+- ホストの `./workdir/` はコンテナの `/work` にマウントされます（`docker-compose.yml`）。
+- 解析プロジェクトの出力先は `project_dir` で指定します。
+  - 例: `project_dir: /work/jakarta_s1`
+  - `/work` 配下にすることで、コンテナ削除後もホスト側に成果が残ります。
+
+プロジェクトディレクトリの標準構成（例）:
+
+```
+<project_dir>/
+  config.resolved.yaml        # Step01: 実行時設定のスナップショット
+  logs/pipeline.log           # パイプラインログ
+  .state/                     # Step完了状態と中間メタ
+    01_prepare.json
+    02_download_s1.json
+    sbas_pairs.json           # Step02: 選択シーン・ペア・bboxなど
+  data/
+    s1_slc/                   # Step02: ダウンロードされた SAFE/zip
+    dem/                      # Step03: DEM
+    orbit/                    # Step04: EOF
+    aux/                      # Step05: stackSentinel用 AUX
+  isce2/                      # Step05/06: stackSentinel の作業ディレクトリ
+  mintpy/                     # Step07: MintPy 実行ディレクトリ
+```
+
+## 設定ファイル（config.yaml）
+
+最低限必要なのは以下です。
 
 ```yaml
-project:
-  work_dir: /work/processing/run    # 作業フォルダ
-  out_dir:  /work/processing/out    # 出力フォルダ
-
-data:
-  slc_dir:   /work/data/sentinel_images     # SLC (SAFE/zip)
-  orbit_dir: /work/data/orbits              # 精密軌道
-  aux_dir:   /work/data/aux                 # AUX_EAP等
-  dem:       /work/data/dem/dem.wgs84       # DEM
-
-aoi:
-  swath_num: "2"                            # サブスワス番号
-  
-coreg:
-  method: NESD                              # 共役登録手法
-  reference_date: "20200302"                # 主画像日付
-  
-ifgram:
-  workflow: interferogram                   # ワークフロー
-  num_connections: 2                        # ネットワーク接続数
-  looks:
-    range: 9                                # レンジルック数
-    azimuth: 3                              # アジマスルック数
-    
-unwrap:
-  method: snaphu                            # アンラッピング手法
+project_dir: /work/<PROJECT_NAME>
+aoi_bbox: [W, S, E, N]
+date_start: "YYYY-MM-DD"
+date_end:   "YYYY-MM-DD"
+orbit_direction: "ASC"   # or "DESC" or "BOTH"
 ```
 
-### Step 3: 処理スクリプト生成・実行
+### `s1_download`（ASF検索/ダウンロード）
 
-```bash
-# スクリプト生成
-python tools/gen_stack_scripts.py --config config_your_area.yaml
+主にStep02で使用します。
 
-# 実行
-./run_stack.sh
+- `s1_download.out_dir`: `project_dir` からの相対パス（既定: `data/s1_slc`）
+- `s1_download.aoi_shrink_m`: AOIを内側に縮めて候補数を減らす（m）
+- `s1_download.dry_search_only`: `true` にすると検索・選択のみでダウンロードしない
+- `s1_download.skip_existing`: 既存ファイルがあればスキップ
 
-# または、ログ付き実行
-./run_all_runs.sh
-```
+認証はコンテナ内の `~/.netrc` を使用します（下の「認証」参照）。
 
-### Step 4: 結果の確認・可視化
+### `sbas`（ネットワーク/シーン間引き）
 
-```python
-# 可視化ツール例
-from tools.plot_ts import plot_time_series
-from tools.make_ts_gif import create_gif
+Step02でSBASペアを作ります。
 
-# 時系列プロット  
-plot_time_series('timeseries.h5')
+- `sbas.k_neighbors`: k近傍（時系列の密度）
+- `sbas.max_temporal_days`: 最大時間間隔（日）
+- `sbas.ensure_chain`: 連結性確保（隣接時刻ペアを追加）
+- `sbas.enforce_same_frame`: 同一frame/sliceのみ使用（既定: true）
+- `sbas.thin_acquisitions.min_repeat_days`: 観測日を間引く（例: 12でほぼ隔回）
 
-# GIFアニメーション作成
-create_gif('timeseries.h5', 'output.gif')
-```
+### `dem`（DEMダウンロード）
 
-## 📁 プロジェクト構造
+Step03は `dem.py` を呼び出します。
 
-```
-time_series_insar/
-├── .devcontainer/           # Dev Container設定
-│   ├── devcontainer.json    # VS Code設定
-│   ├── docker-compose.yml   # Docker compose設定  
-│   ├── Dockerfile           # Docker image定義
-│   └── init.sh              # 初期化スクリプト
-├── workdir/                 # 作業ディレクトリ
-│   ├── notebooks/           # Jupyter notebooks
-│   ├── tools/               # 処理ツール
-│   └── config_*.yaml        # 設定ファイル例
-└── README.md               # このファイル
-```
+- `dem.url`: 取得元URL（省略時: `https://step.esa.int/auxdata/dem/SRTMGL1/`）
 
-## 🔧 主要ツール
+### `orbits`（EOFダウンロード）
 
-| ツール | 機能 |
-|--------|------|
-| `download_sentinel.py` | Sentinel-1データのダウンロード |
-| `gen_stack_scripts.py` | ISCE2処理スクリプトの生成 |
-| `plot_ts.py` | 時系列結果の可視化 |
-| `make_ts_gif.py` | アニメーションGIF作成 |
-| `tsview_cli.py` | CLI時系列ビューア |
+Step04は `fetchOrbit_asf.py` を使ってEOFを落とします。
 
-## 📋 設定ファイル詳細
+- `orbits.prefer`: `precise`（POEORB）または `restituted`（RESORB）
+- `orbits.only_selected`: Step02で選ばれたシーンのみ対象（既定: true）
 
-### プロジェクト設定
-- `work_dir`: ISCE2の作業ディレクトリ
-- `out_dir`: 最終結果の出力先
+### `isce2`（stackSentinelパラメータ）
 
-### データ設定  
-- `slc_dir`: Sentinel-1 SLCデータ（SAFEファイル）
-- `orbit_dir`: 精密軌道ファイル
-- `aux_dir`: 補助データ（AUX_EAP等）
-- `dem`: 標高データ（WGS84）
+未指定でも動くようにデフォルトがありますが、結果が安定しない場合は明示を推奨します。
 
-### AOI（解析対象領域）設定
-- `swath_num`: サブスワス番号（1, 2, 3 または組み合わせ）
-- `bbox_snwe`: 境界ボックス [South, North, West, East]
+重要オプション例:
 
-### 共役登録設定
-- `method`: 共役登録手法（NESD, PS等）  
-- `reference_date`: 主画像日付
-- `esd_coh_threshold`: ESDBurst間コヒーレンス閾値
-
-### 干渉画像設定
-- `workflow`: ワークフロー（interferogram, offset等）
-- `num_connections`: 時間的ベースライン接続数
-- `looks`: レンジ・アジマスルック数
-- `filter_strength`: フィルタ強度
-
-## 🚨 トラブルシューティング
-
-### 一般的な問題
-
-**1. メモリ不足エラー**
 ```yaml
-compute:
-  num_proc: 2  # プロセス数を削減
+isce2:
+  workflow: interferogram
+  swath_num: "1 2 3"
+  coregistration: NESD
+  reference_date: auto      # or "YYYYMMDD"
+  range_looks: 9
+  azimuth_looks: 3
+  filter_strength: 0.5
+  unw_method: snaphu
+  num_connections: 2
+  num_proc: 8
+  num_proc4topo: 4
+
+  # 推奨: bboxを明示（Step02のunion bboxは広がりすぎる場合がある）
+  # bbox: [S, N, W, E]
 ```
 
-**2. ディスク容量不足**  
-- 不要な中間ファイルを削除
-- より小さな解析領域を設定
+## 実行方法（部分実行/再実行）
 
-**3. ネットワークエラー（ダウンロード）**
-- `.netrc`ファイルの認証情報を確認
-- プロキシ設定を確認
+すべてコンテナ内 `/work` で実行する想定です。
 
-**4. ISCE2パスエラー**
+### 全Stepを実行
+
 ```bash
-# コンテナ内で確認
-echo $ISCE_HOME
-echo $PYTHONPATH
-which stackSentinel.py
+python run_pipeline.py --config config.yaml
 ```
 
-### ログの確認
+### Stepを指定して実行
 
 ```bash
-# 処理ログの確認
-tail -f logs/*/run_stack.log
-
-# ISCE2ログの確認  
-tail -f workdir/isce.log
+python run_pipeline.py --config config.yaml --only-steps 02_download_s1 03_download_dem
 ```
 
-## 🤝 貢献
+### 範囲を指定して実行
 
-Issue報告や改善提案は歓迎します。
+```bash
+python run_pipeline.py --config config.yaml --from-step 05_config_stack --until-step 07_run_mintpy
+```
 
-## 📄 ライセンス
+### 既にdoneのStepも強制再実行
 
-このプロジェクトは [MIT License](LICENSE) のもとで公開されています。
+```bash
+python run_pipeline.py --config config.yaml --force
+```
 
-## 📚 参考資料
+### ドライラン（コマンドだけ表示）
 
-- [ISCE2 Documentation](https://github.com/isce-framework/isce2)
-- [MintPy Documentation](https://github.com/insarlab/MintPy)
-- [Sentinel-1 Data](https://sentinel.esa.int/web/sentinel/missions/sentinel-1)
-- [ASF Data Search](https://search.asf.alaska.edu/)
+```bash
+python run_pipeline.py --config config.yaml --dry-run
+```
 
----
+## 認証（Earthdata / Copernicus）
 
-## 💡 Tips
+Sentinel-1ダウンロードは `~/.netrc` を参照します。
 
-- **初回実行時**: スモールエリアでテスト実行を推奨
-- **メモリ使用量**: `num_proc`を適切に調整
-- **ストレージ**: SSD使用で大幅な高速化が可能
-- **バックアップ**: 重要なデータは定期的にバックアップ
+- コンテナ起動時に `init.sh` が `.env` の `EARTHDATA_USER/EARTHDATA_PASS` から `~/.netrc` を自動生成します。
+- `.env` の中身はコミットしないでください（このリポジトリでは `.gitignore` 対象）。
 
----
+`.netrc` の形式（例）:
 
-**問題や質問がありましたら、Issueを作成してください！**
+```
+machine urs.earthdata.nasa.gov login <user> password <pass>
+```
+
+## トラブルシューティング
+
+### Step02: 候補が多すぎる / 検索が重い
+
+- `s1_download.dry_search_only: true` でまず選択だけ確認
+- `s1_download.aoi_shrink_m` を増やす（例: 2000→5000）
+- `date_start/date_end` を短くする
+
+### Step02: frameメタが無くて落ちる
+
+デフォルトで `sbas.enforce_same_frame: true` なので、ASF結果にframe情報が無い場合にエラーになります。
+
+- AOI/期間を絞って再検索
+- どうしても必要なら `sbas.enforce_same_frame: false`（推奨はしません）
+
+### Step05: stackSentinelで "dates covering the bbox (0)" など
+
+Step02の `selected_bbox` は union bbox で広がりやすく、共通オーバーラップを外すことがあります。
+
+- `isce2.bbox: [S, N, W, E]` を明示して、オーバーラップ領域に寄せる
+- `aoi_bbox` を小さめにする
+
+### Step06: 途中で落ちる / 再開したい
+
+- 失敗したStepだけ `--only-steps` / `--from-step` で再実行
+- Stepを最初からやり直す場合は `--force` か、`<project_dir>/.state/<step>.json` を削除
+
+### Step07: MintPyが入力ファイルを見つけない
+
+Step07は `mintpy/smallbaselineApp.cfg` を生成後、`workdir/smallbaselineApp.cfg` を参照して「パス系キーのみ」上書きします。
+
+- Step06が完了して `isce2/merged` などが生成されているか確認
+- `workdir/smallbaselineApp.cfg` の想定ディレクトリ（`<project_dir>/isce2/mintpy`）が存在するか確認
+
+## 参考
+
+- ISCE2: https://github.com/isce-framework/isce2
+- MintPy: https://github.com/insarlab/MintPy
+- ASF Search: https://search.asf.alaska.edu/

@@ -50,7 +50,7 @@ def build_context(cfg: Dict[str, Any], config_path: Path, args: argparse.Namespa
     orbit_dir = data_dir / "orbit"
     aux_dir = data_dir / "aux"
 
-    mintpy_run_dir = mintpy_dir / "run"
+    mintpy_run_dir = mintpy_dir
 
     return Context(
         config_path=config_path,
