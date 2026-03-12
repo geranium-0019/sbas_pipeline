@@ -1,12 +1,12 @@
-project_dir: /work/jakarta_s1
+project_dir: /work/Kilauea
 # --- AOI & time ---
 # bbox: [W, S, E, N]
-aoi_bbox: [110.694, -8.26, 111.147, -7.729]
-date_start: "2020-01-01"
-date_end:   "2020-03-31"
+aoi_bbox: [-155.3402, 19.3760, -155.2334, 19.4659]
+date_start: "2025-03-14"
+date_end:   "2025-06-30"
 
 # ASC / DESC / BOTH
-orbit_direction: "DESC"
+orbit_direction: "BOTH"
 
 # --- search + download settings ---
 s1_download:
@@ -21,7 +21,7 @@ s1_download:
 
   # Option B: shrink AOI inward (meters) to reduce candidates
   # Start with 2000 (2 km) and increase if still too many.
-  aoi_shrink_m: 2000
+  aoi_shrink_m: 0
 
   # first run recommended:
   # dry_search_only: true
@@ -41,13 +41,13 @@ sbas:
   ensure_chain: true
 
   # choose which track-group to process
-  choose_group: "largest"
+  choose_group: "max_aoi_overlap"
 
   # acquisition density (reduce number of scenes themselves)
   thin_acquisitions:
     # Keep acquisitions only if they are at least this many days apart.
     # Example: Sentinel-1 6-day repeat -> set 12 to roughly keep every other acquisition.
-    min_repeat_days: 12
+    min_repeat_days: 6
 
     # Also cap total acquisitions after thinning (optional).
     # max_acquisitions: 80

@@ -298,18 +298,68 @@ def group_by_track(infos: List[SceneInfo]) -> Dict[Tuple[Any, Any, Any, Any], Li
     return g
 
 
+def _aoi_overlap_area(infos: List[SceneInfo], aoi_bbox: List[float]) -> float:
+    """Compute the intersection area between the union of scene footprints and the AOI.
+
+    Returns the area of (scenes_union ∩ AOI) in the AOI's local metric CRS.
+    Requires shapely and pyproj.
+    """
+    from shapely.geometry import Polygon, shape
+    from shapely.ops import transform, unary_union
+    import pyproj
+
+    w, s, e, n = aoi_bbox
+    aoi_poly_ll = Polygon([(w, s), (e, s), (e, n), (w, n), (w, s)])
+
+    # Collect scene footprints
+    scene_polys = []
+    for info in infos:
+        geom = _scene_geometry(info.obj)
+        if geom:
+            try:
+                poly = shape(geom)
+                if poly.is_valid and not poly.is_empty:
+                    scene_polys.append(poly)
+            except Exception:
+                continue
+
+    if not scene_polys:
+        return 0.0
+
+    # Project to local metric CRS for accurate area comparison
+    cx, cy = aoi_poly_ll.centroid.x, aoi_poly_ll.centroid.y
+    aeqd = pyproj.CRS.from_proj4(
+        f"+proj=aeqd +lat_0={cy} +lon_0={cx} +datum=WGS84 +units=m +no_defs"
+    )
+    wgs84 = pyproj.CRS.from_epsg(4326)
+    fwd = pyproj.Transformer.from_crs(wgs84, aeqd, always_xy=True).transform
+
+    aoi_m = transform(fwd, aoi_poly_ll)
+    scenes_union_ll = unary_union(scene_polys)
+    scenes_union_m = transform(fwd, scenes_union_ll)
+
+    intersection = aoi_m.intersection(scenes_union_m)
+    return intersection.area if not intersection.is_empty else 0.0
+
+
 def choose_group(
     groups: Dict[Tuple[Any, Any, Any, Any], List[SceneInfo]],
-    mode: str = "largest",
+    mode: str = "max_aoi_overlap",
+    aoi_bbox: Optional[List[float]] = None,
 ) -> Tuple[Tuple[Any, Any, Any, Any], List[SceneInfo]]:
     if not groups:
         raise ValueError("No groups found (empty results).")
+
+    if mode == "max_aoi_overlap" and aoi_bbox is not None:
+        # Pick the group whose scenes collectively cover the most of the AOI
+        k = max(groups.keys(), key=lambda kk: _aoi_overlap_area(groups[kk], aoi_bbox))
+        return k, groups[k]
 
     if mode == "largest":
         k = max(groups.keys(), key=lambda kk: len(groups[kk]))
         return k, groups[k]
 
-    # fallback
+    # fallback: largest
     k = max(groups.keys(), key=lambda kk: len(groups[kk]))
     return k, groups[k]
 
@@ -478,8 +528,8 @@ def sbas_select_and_download(
     groups = group_by_track(infos)
 
     sbas_cfg: Dict[str, Any] = cfg.get("sbas", {}) or {}
-    group_mode = str(sbas_cfg.get("choose_group", "largest"))
-    chosen_key, chosen_infos = choose_group(groups, mode=group_mode)
+    group_mode = str(sbas_cfg.get("choose_group", "max_aoi_overlap"))
+    chosen_key, chosen_infos = choose_group(groups, mode=group_mode, aoi_bbox=cfg["aoi_bbox"])
 
     chosen_infos_before_group_filters = chosen_infos
     chosen_group_frame_counts_before = frame_counts(chosen_infos_before_group_filters)
